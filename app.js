@@ -129,7 +129,7 @@
           item.parcial && h('span', { class: 'quadro__parcial', texto: 'Texto do post' })),
         h('div', { class: 'quadro__acoes' },
           botaoCopiarPrompt(item),
-          h('button', { class: 'botao', type: 'button', texto: 'Abrir', onclick: aoAbrir }))));
+          h('button', { class: 'botao', type: 'button', texto: 'Ver', onclick: aoAbrir }))));
   }
 
   // ---------- tela de detalhe ----------
