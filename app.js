@@ -5,7 +5,9 @@
 
   const LOTE = 40;
   const ESPERA_BUSCA_MS = 140;
-  const ESPERA_PREVIA_MS = 160;
+  const VISIVEL_PARA_TOCAR = 0.35;
+  const CHAVE_PREFERENCIAS = 'rolo.preferencias.v1';
+  const COLUNAS_VALIDAS = [1, 2, 3];
   const AVISO_MS = 1800;
   const ATRASO_MAXIMO = 12;
   const SLUG_VALIDO = /^[a-z0-9-]+$/;
@@ -18,14 +20,27 @@
   };
   const ORDENS = {
     original: null,
+    destaques: (a, b) => Number(Boolean(b.refeito)) - Number(Boolean(a.refeito)) || Number(Boolean(b.video)) - Number(Boolean(a.video)) || a.ordem - b.ordem,
     recentes: (a, b) => b.data.localeCompare(a.data) || a.ordem - b.ordem,
     longos: (a, b) => b.prompt.length - a.prompt.length,
     curtos: (a, b) => a.prompt.length - b.prompt.length,
     autor: (a, b) => a.autor.localeCompare(b.autor, 'pt-BR', { sensitivity: 'base' }),
   };
-  const INICIAL = Object.freeze({ busca: '', categoria: '', tecnicas: Object.freeze([]), soVideo: false, soCompleto: false, ordem: 'recentes' });
+  const INICIAL = Object.freeze({ busca: '', categoria: '', tecnicas: Object.freeze([]), soVideo: false, soCompleto: false, ordem: 'destaques' });
+  const ICONES = {
+    tudo: 'M3 3h6v6H3zM11 3h6v6h-6zM3 11h6v6H3zM11 11h6v6h-6z',
+    motion: 'M3 4h14v12H3zM7 4v12M13 4v12M3 10h4M13 10h4',
+    explainer: 'M2 8l8-4 8 4-8 4zM5 10v4c2 2 8 2 10 0v-4',
+    '3d': 'M10 2l7 4v8l-7 4-7-4V6zM3 6l7 4 7-4M10 10v8',
+    interactive: 'M6 7h8a4 4 0 0 1 4 4v1a3 3 0 0 1-5 2l-1-1H8l-1 1a3 3 0 0 1-5-2v-1a4 4 0 0 1 4-4zM6 10v2M5 11h2M14 11h.01',
+    copiar: 'M7 7h9v10H7zM4 13V3h9',
+    fora: 'M8 4H4v12h12v-4M11 3h6v6M17 3l-8 8',
+    play: 'M6 4v12l10-6z',
+    codigo: 'M7 6l-4 4 4 4M13 6l4 4-4 4',
+    col1: 'M5 3h10v14H5z', col2: 'M3 3h6v14H3zM11 3h6v14h-6z', col3: 'M2 3h4v14H2zM8 3h4v14H8zM14 3h4v14h-4z',
+  };
   const NOVA_ABA = { target: '_blank', rel: 'noopener noreferrer' };
-  const temCursor = matchMedia('(hover: hover)').matches;
+  const economia = navigator.connection?.saveData === true;
   const poucoMovimento = matchMedia('(prefers-reduced-motion: reduce)').matches;
 
   const $ = (id) => document.getElementById(id);
@@ -43,15 +58,30 @@
     return el;
   }
 
-  function iconePlay() {
+  function icone(nome) {
     const svg = document.createElementNS(SVG, 'svg');
-    svg.setAttribute('viewBox', '0 0 12 12');
+    svg.setAttribute('viewBox', '0 0 20 20');
     svg.setAttribute('aria-hidden', 'true');
     const forma = document.createElementNS(SVG, 'path');
-    forma.setAttribute('d', 'M2 1v10l9-5z');
+    forma.setAttribute('d', ICONES[nome]);
     svg.append(forma);
     return svg;
   }
+
+  function lerPreferencias() {
+    try {
+      const salvo = JSON.parse(localStorage.getItem(CHAVE_PREFERENCIAS) || '{}');
+      return { comparar: salvo.comparar !== false, colunas: COLUNAS_VALIDAS.includes(salvo.colunas) ? salvo.colunas : 2 };
+    } catch (erro) {
+      console.warn('Preferências indisponíveis; usando o padrão.', erro);
+      return { comparar: true, colunas: 2 };
+    }
+  }
+
+  function salvarPreferencias(preferencias) {
+    try { localStorage.setItem(CHAVE_PREFERENCIAS, JSON.stringify(preferencias)); } catch (erro) { console.warn('Não deu para salvar as preferências.', erro); }
+  }
+
 
   const semAcento = (texto) => texto.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
   const dataBr = (iso) => iso.split('-').reverse().join('/');
@@ -120,40 +150,69 @@
     return img;
   }
 
-  // ---------- cartão ----------
-  function ligarPrevia(tela, item) {
-    let relogio = 0;
-    let video = null;
-    const parar = () => {
-      clearTimeout(relogio);
-      if (video) { video.remove(); video = null; }
-    };
-    tela.addEventListener('pointerenter', () => {
-      relogio = setTimeout(() => {
-        video = h('video', { src: item.video, muted: true, loop: true, playsinline: true, autoplay: true, preload: 'auto', 'aria-hidden': 'true', tabindex: '-1' });
-        video.muted = true;
-        video.addEventListener('playing', () => video?.classList.add('rodando'));
-        video.addEventListener('error', () => { console.warn('Prévia não carregou:', item.slug); parar(); });
-        tela.append(video);
-      }, ESPERA_PREVIA_MS);
-    });
-    tela.addEventListener('pointerleave', parar);
-    tela.addEventListener('click', parar);
+  // ---------- par de telas ----------
+  // Os vídeos da grade só recebem endereço quando entram na tela, e pausam ao sair.
+  const tocarSozinho = !poucoMovimento && !economia;
+  const vigia = new IntersectionObserver((entradas) => {
+    for (const entrada of entradas) {
+      const video = entrada.target;
+      if (entrada.intersectionRatio >= VISIVEL_PARA_TOCAR) {
+        if (!video.src) video.src = video.dataset.src;
+        video.play().catch((erro) => console.warn('O navegador não deixou tocar sozinho:', erro.name));
+      } else if (!video.paused) {
+        video.pause();
+      }
+    }
+  }, { threshold: [0, VISIVEL_PARA_TOCAR] });
+
+  function telaDeVideo({ fonte, capa, rotulo, iconeNome, descricao, aoAbrir }) {
+    const video = h('video', { muted: true, loop: true, playsinline: true, preload: 'none', poster: capa || null, 'data-src': fonte, 'aria-hidden': 'true', tabindex: '-1' });
+    video.muted = true;
+    video.addEventListener('error', () => console.warn('Vídeo da grade não carregou:', fonte));
+    const botao = h('button', { class: 'meia', type: 'button', 'aria-label': descricao, onclick: aoAbrir },
+      video, h('span', { class: 'selo' }, icone(iconeNome), h('span', { texto: rotulo })));
+    if (tocarSozinho) vigia.observe(video);
+    else {
+      botao.addEventListener('pointerenter', () => { if (!video.src) video.src = video.dataset.src; video.play().catch(() => {}); });
+      botao.addEventListener('pointerleave', () => video.pause());
+    }
+    return botao;
   }
 
-  function montarCartao(item, abrir, posicao) {
-    const tela = h('button', { class: 'cena__tela', type: 'button', 'aria-label': `Abrir o vídeo de @${item.autor}`, onclick: (e) => abrir(item, e.currentTarget) },
-      imagem(item, ''),
-      item.video && h('span', { class: 'cena__play' }, iconePlay()));
-    if (item.video && temCursor && !poucoMovimento) ligarPrevia(tela, item);
-    const copiarBotao = h('button', { class: 'cena__copiar', type: 'button', texto: 'Copiar prompt' });
+  function telaOriginal(item, abrir) {
+    const aoAbrir = (e) => abrir(item, e.currentTarget, 'original');
+    if (item.video) {
+      return telaDeVideo({ fonte: item.previa || item.video, capa: item.capa, rotulo: 'Original', iconeNome: 'play', descricao: `Abrir o original de @${item.autor}`, aoAbrir });
+    }
+    return h('button', { class: 'meia', type: 'button', 'aria-label': `Abrir o quadro de @${item.autor}`, onclick: aoAbrir },
+      imagem(item, ''), h('span', { class: 'selo' }, h('span', { texto: 'Vídeo no post' })));
+  }
+
+  function telaAoLado(item, abrir) {
+    if (item.refeito) {
+      return telaDeVideo({ fonte: item.refeitoPrevia, capa: item.refeitoCapa, rotulo: 'Refeito', iconeNome: 'codigo', descricao: `Abrir a versão refeita do vídeo de @${item.autor}`, aoAbrir: (e) => abrir(item, e.currentTarget, 'refeito') });
+    }
+    return h('button', { class: 'meia meia--prompt', type: 'button', 'aria-label': `Abrir o prompt de @${item.autor}`, onclick: (e) => abrir(item, e.currentTarget, 'original') },
+      h('p', { texto: item.prompt.replace(/\s+/g, ' ').slice(0, 400) }),
+      h('span', { class: 'selo' }, h('span', { texto: item.parcial ? 'Texto do post' : 'Prompt' })));
+  }
+
+  function montarCartao(item, abrir, posicao, comparar) {
+    const copiarBotao = h('button', { class: 'icone', type: 'button', 'aria-label': 'Copiar prompt', title: 'Copiar prompt' }, icone('copiar'));
     copiarBotao.addEventListener('click', () => copiar(item.prompt, 'Prompt copiado', copiarBotao));
-    const cartao = h('article', { class: 'cena' },
-      h('div', { style: 'position:relative' }, tela, copiarBotao),
-      h('div', { class: 'cena__legenda' },
-        h('a', { class: 'cena__autor', href: item.post, ...NOVA_ABA, texto: `@${item.autor}` }),
-        h('span', { class: 'cena__tipo', texto: CATEGORIAS[item.categoria] || item.categoria }),
-        h('p', { class: 'cena__trecho', texto: item.titulo || item.prompt.replace(/\s+/g, ' ').slice(0, 140) })));
+    const acoes = h('div', { class: 'par__acoes' },
+      copiarBotao,
+      h('a', { class: 'icone', href: item.post, ...NOVA_ABA, 'aria-label': 'Abrir o post original', title: 'Post original' }, icone('fora')));
+    const autor = h('a', { class: 'par__autor', href: item.post, ...NOVA_ABA, texto: `@${item.autor}` });
+    const credito = item.refeito
+      ? h('a', { class: 'par__credito', href: item.skillry, ...NOVA_ABA, texto: 'refeito por Skillry' })
+      : h('span', { class: 'par__credito', texto: plural(item.prompt.length, 'caractere', 'caracteres') });
+    const cartao = h('article', { class: 'par' },
+      h('div', { class: 'par__telas' }, telaOriginal(item, abrir), comparar && telaAoLado(item, abrir)),
+      h('div', { class: 'par__legenda' },
+        comparar ? h('div', { class: 'par__lado' }, autor) : h('div', { class: 'par__lado' }, autor, acoes),
+        comparar && h('div', { class: 'par__lado' }, credito, acoes)));
+    cartao.style.setProperty('--partes', comparar ? '2' : '1');
     cartao.style.setProperty('--i', String(Math.min(posicao, ATRASO_MAXIMO)));
     return cartao;
   }
@@ -167,12 +226,15 @@
     let lista = [];
     let posicao = -1;
     let origem = null;
+    let versao = 'original';
+    const seletor = $('d-versao');
 
     function midia(item) {
-      if (!item.video) return [imagem(item, `Quadro do vídeo de @${item.autor}`)];
-      const video = h('video', { src: item.video, poster: item.capa, controls: true, autoplay: true, playsinline: true, loop: true, preload: 'auto' });
+      const refeito = versao === 'refeito' && item.refeito;
+      if (!refeito && !item.video) return [imagem(item, `Quadro do vídeo de @${item.autor}`)];
+      const video = h('video', { src: refeito ? item.refeito : item.video, poster: refeito ? item.refeitoCapa : item.capa, controls: true, autoplay: true, playsinline: true, loop: true, preload: 'auto' });
       video.addEventListener('error', () => {
-        console.error('Vídeo não carregou:', item.video);
+        console.error('Vídeo não carregou:', video.src);
         const capa = imagem(item, '');
         capa.classList.add('pronta');
         tela.replaceChildren(capa, h('p', { class: 'folha__falha', texto: 'O vídeo não carregou. Veja no post original.' }));
@@ -180,9 +242,18 @@
       return [video];
     }
 
+    function mostrarMidia() {
+      const item = lista[posicao];
+      if (!item.refeito) versao = 'original';
+      tela.replaceChildren(...midia(item));
+      seletor.hidden = !item.refeito;
+      seletor.replaceChildren(...[['original', 'Original'], ['refeito', 'Refeito']].map(([id, rotulo]) =>
+        h('button', { type: 'button', 'aria-pressed': String(versao === id), texto: rotulo, onclick: () => { versao = id; mostrarMidia(); } })));
+    }
+
     function preencher() {
       const item = lista[posicao];
-      tela.replaceChildren(...midia(item));
+      mostrarMidia();
       const copiarLink = h('button', { type: 'button', texto: 'Copiar link' });
       copiarLink.addEventListener('click', () => copiar(location.href, 'Link copiado', copiarLink));
       lado.replaceChildren(...[
@@ -215,12 +286,14 @@
       preencher();
     }
 
-    function abrir(item, novaLista, quemAbriu) {
+    function abrir(item, novaLista, quemAbriu, qualVersao) {
+      versao = qualVersao === 'refeito' ? 'refeito' : 'original';
       const onde = novaLista.indexOf(item);
       lista = onde >= 0 ? novaLista : [item];
       posicao = Math.max(onde, 0);
       origem = quemAbriu || null;
       preencher();
+      document.querySelectorAll('.meia video').forEach((video) => { if (!video.paused) { video.pause(); video.dataset.pausado = '1'; } });
       if (!dialogo.open) dialogo.showModal();
     }
 
@@ -235,6 +308,7 @@
     });
     dialogo.addEventListener('close', () => {
       tela.replaceChildren(); // para o vídeo
+      document.querySelectorAll('.meia video').forEach((video) => { if (tocarSozinho && video.dataset.pausado) { delete video.dataset.pausado; video.play().catch(() => {}); } });
       history.replaceState(null, '', location.pathname + location.search);
       document.title = TITULO;
       if (origem?.isConnected) origem.focus({ preventScroll: true });
@@ -252,30 +326,47 @@
     let visiveis = [];
     let mostrados = 0;
 
-    const abrir = (item, quemAbriu) => abrirDetalhe(item, visiveis, quemAbriu);
+    let preferencias = lerPreferencias();
+    const abrir = (item, quemAbriu, qualVersao) => abrirDetalhe(item, visiveis, quemAbriu, qualVersao);
+    const contar = (teste) => itens.filter(teste).length;
     const chip = (rotulo, aoClicar, leve) => h('button', { class: leve ? 'chip chip--leve' : 'chip', type: 'button', 'aria-pressed': 'false', texto: rotulo, onclick: aoClicar });
     const divisa = () => h('span', { class: 'filtros__divisa', 'aria-hidden': 'true' });
     const alternarTecnica = (id) => (estado.tecnicas.includes(id) ? estado.tecnicas.filter((t) => t !== id) : [...estado.tecnicas, id]);
 
-    const chipsCategoria = new Map([['', chip('Tudo', () => mudar({ categoria: '' }))],
-      ...Object.entries(CATEGORIAS).map(([id, rotulo]) => [id, chip(rotulo, () => mudar({ categoria: id }))])]);
+    const chipComIcone = (nomeIcone, rotulo, total, aoClicar) => h('button', { class: 'chip', type: 'button', 'aria-pressed': 'false', onclick: aoClicar },
+      icone(nomeIcone), h('span', { texto: rotulo }), h('b', { texto: String(total) }));
+    const chipsCategoria = new Map([['', chipComIcone('tudo', 'Tudo', itens.length, () => mudar({ categoria: '' }))],
+      ...Object.entries(CATEGORIAS).map(([id, rotulo]) => [id, chipComIcone(id, rotulo, contar((i) => i.categoria === id), () => mudar({ categoria: id }))])]);
+    const botoesColuna = new Map(COLUNAS_VALIDAS.map((n) => [n, h('button', {
+      type: 'button', 'aria-pressed': 'false', 'aria-label': `${n} ${n === 1 ? 'coluna' : 'colunas'}`, title: `${n} ${n === 1 ? 'coluna' : 'colunas'}`,
+      onclick: () => preferir({ colunas: n }),
+    }, icone(`col${n}`))]));
+    $('colunas').append(...botoesColuna.values());
+    $('comparar').addEventListener('click', () => preferir({ comparar: !preferencias.comparar }));
     const chipVideo = chip('Com vídeo', () => mudar({ soVideo: !estado.soVideo }));
     const chipCompleto = chip('Prompt completo', () => mudar({ soCompleto: !estado.soCompleto }));
     const chipsTecnica = new Map(Object.entries(TECNICAS)
       .filter(([id]) => itens.some((item) => item.tags.includes(id)))
       .map(([id, rotulo]) => [id, chip(rotulo, () => mudar({ tecnicas: alternarTecnica(id) }), true)]));
-    $('chips').append(...chipsCategoria.values(), divisa(), chipVideo, chipCompleto, divisa(), ...chipsTecnica.values());
+    $('categorias').append(...chipsCategoria.values());
+    $('chips').append(chipVideo, chipCompleto, divisa(), ...chipsTecnica.values());
 
     function carregarMais() {
       const proximos = visiveis.slice(mostrados, mostrados + LOTE);
-      grade.append(...proximos.map((item, i) => montarCartao(item, abrir, i)));
+      grade.append(...proximos.map((item, i) => montarCartao(item, abrir, i, preferencias.comparar)));
       mostrados += proximos.length;
     }
 
     function desenhar() {
       visiveis = filtrar(itens, estado);
       mostrados = 0;
+      vigia.disconnect();
       grade.replaceChildren();
+      const { comparar, colunas } = preferencias;
+      grade.style.setProperty('--colunas', String(comparar ? colunas : colunas * 2));
+      grade.style.setProperty('--colunas-cel', comparar ? '1' : '2');
+      $('comparar').setAttribute('aria-checked', String(comparar));
+      botoesColuna.forEach((botao, n) => botao.setAttribute('aria-pressed', String(n === colunas)));
       carregarMais();
       $('vazio').hidden = visiveis.length > 0;
       $('contagem').textContent = plural(visiveis.length, 'vídeo', 'vídeos');
@@ -289,6 +380,12 @@
 
     function mudar(parte) {
       estado = Object.freeze({ ...estado, ...parte });
+      desenhar();
+    }
+
+    function preferir(parte) {
+      preferencias = { ...preferencias, ...parte };
+      salvarPreferencias(preferencias);
       desenhar();
     }
 
@@ -318,6 +415,7 @@
     }, { rootMargin: '1200px 0px' }).observe($('sentinela'));
 
     $('total').textContent = itens.length.toLocaleString('pt-BR');
+    $('total-refeito').textContent = contar((i) => i.refeito).toLocaleString('pt-BR');
     desenhar();
     abrirPeloEndereco();
   }

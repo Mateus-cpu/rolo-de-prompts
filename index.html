@@ -20,7 +20,7 @@
 <link rel="preconnect" href="https://media.skillry.dev">
 <link rel="stylesheet" href="https://api.fontshare.com/v2/css?f[]=zodiak@400,401&display=swap">
 <link rel="stylesheet" href="https://api.fontshare.com/v2/css?f[]=switzer@400,500,600&display=swap">
-<link rel="stylesheet" href="estilo.css?v=3">
+<link rel="stylesheet" href="estilo.css?v=4">
 </head>
 <body>
 <a class="pular" href="#grade">Pular para os vídeos</a>
@@ -37,15 +37,23 @@
 
 <section class="abre">
   <h1>Prompts que <em>viraram</em> vídeo.</h1>
-  <p><span id="total">703</span> vídeos feitos com Claude Opus 5.5, cada um com o prompt que o gerou. <span class="so-cursor">Passe o cursor para ver, abra para copiar.</span><span class="so-toque">Toque para assistir e copiar.</span></p>
+  <p><span id="total">703</span> vídeos feitos com Claude Opus 5.5, cada um com o prompt que o gerou. Em <span id="total-refeito">417</span>, o original roda ao lado de uma versão refeita.</p>
 </section>
 
 <nav class="filtros" aria-label="Filtros">
+  <div class="filtros__linha" id="categorias"></div>
+  <div class="filtros__lado">
+    <div class="segmento" role="group" aria-label="Colunas" id="colunas"></div>
+    <button class="chave" type="button" role="switch" aria-checked="true" id="comparar"><span>Comparar</span><i aria-hidden="true"></i></button>
+  </div>
+</nav>
+<div class="filtros filtros--sub">
   <div class="filtros__linha" id="chips"></div>
   <div class="filtros__lado">
     <span id="contagem" aria-live="polite"></span>
     <label class="ordem"><span class="oculto">Ordem</span>
       <select id="ordem">
+        <option value="destaques">Com refeito primeiro</option>
         <option value="recentes">Mais recentes</option>
         <option value="original">Ordem do arquivo</option>
         <option value="longos">Prompt mais longo</option>
@@ -54,7 +62,7 @@
       </select>
     </label>
   </div>
-</nav>
+</div>
 
 <main id="grade" class="grade" aria-label="Vídeos" tabindex="-1"></main>
 <div id="vazio" class="vazio" hidden>
@@ -74,7 +82,7 @@
 </footer>
 
 <dialog class="folha" id="detalhe" aria-labelledby="d-autor">
-  <div class="folha__midia" id="d-tela"></div>
+  <div class="folha__midia"><div class="folha__video" id="d-tela"></div><div class="segmento segmento--escuro" role="group" aria-label="Versão" id="d-versao" hidden></div></div>
   <div class="folha__painel">
     <div class="folha__topo">
       <span id="d-num"></span>
@@ -91,7 +99,7 @@
 
 <div id="aviso" class="aviso" role="status" aria-live="polite" hidden></div>
 
-<script defer src="dados.js"></script>
-<script defer src="app.js?v=3"></script>
+<script defer src="dados.js?v=4"></script>
+<script defer src="app.js?v=4"></script>
 </body>
 </html>
