@@ -3,11 +3,14 @@
 (() => {
   'use strict';
 
-  const LOTE = 36;
-  const QUADROS_NO_ROLO = 14;
+  const LOTE = 40;
   const ESPERA_BUSCA_MS = 140;
+  const ESPERA_PREVIA_MS = 160;
   const AVISO_MS = 1800;
+  const ATRASO_MAXIMO = 12;
   const SLUG_VALIDO = /^[a-z0-9-]+$/;
+  const SVG = 'http://www.w3.org/2000/svg';
+  const TITULO = document.title;
   const CATEGORIAS = { motion: 'Motion graphics', explainer: 'Explicativos', '3d': 'Cenas 3D', interactive: 'Jogos e interativos' };
   const TECNICAS = {
     canvas: 'Canvas', svg: 'SVG', threejs: 'Three.js', shader: 'Shader', gsap: 'GSAP', css: 'CSS', audio: 'Áudio',
@@ -22,6 +25,8 @@
   };
   const INICIAL = Object.freeze({ busca: '', categoria: '', tecnicas: Object.freeze([]), soVideo: false, soCompleto: false, ordem: 'recentes' });
   const NOVA_ABA = { target: '_blank', rel: 'noopener noreferrer' };
+  const temCursor = matchMedia('(hover: hover)').matches;
+  const poucoMovimento = matchMedia('(prefers-reduced-motion: reduce)').matches;
 
   const $ = (id) => document.getElementById(id);
 
@@ -38,17 +43,27 @@
     return el;
   }
 
+  function iconePlay() {
+    const svg = document.createElementNS(SVG, 'svg');
+    svg.setAttribute('viewBox', '0 0 12 12');
+    svg.setAttribute('aria-hidden', 'true');
+    const forma = document.createElementNS(SVG, 'path');
+    forma.setAttribute('d', 'M2 1v10l9-5z');
+    svg.append(forma);
+    return svg;
+  }
+
   const semAcento = (texto) => texto.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
-  const numero = (n) => String(n).padStart(3, '0');
   const dataBr = (iso) => iso.split('-').reverse().join('/');
   const etiquetasDe = (item) => [CATEGORIAS[item.categoria] || item.categoria, ...item.tags.map((t) => TECNICAS[t] || t)];
+  const plural = (n, um, varios) => `${n.toLocaleString('pt-BR')} ${n === 1 ? um : varios}`;
 
   function preparar(bruto) {
     if (!Array.isArray(bruto)) throw new Error('dados.js não carregou ou está em formato inesperado');
     return bruto.map((item, i) => Object.freeze({
       ...item,
       ordem: i,
-      rotulo: numero(i + 1),
+      numero: i + 1,
       indice: semAcento([item.prompt, item.autor, item.titulo, ...etiquetasDe(item)].join(' ')),
     }));
   }
@@ -71,6 +86,7 @@
     const el = $('aviso');
     el.textContent = texto;
     el.hidden = false;
+    ($('detalhe').open ? $('detalhe') : document.body).append(el); // dentro do diálogo aberto para ficar por cima
     clearTimeout(relogioAviso);
     relogioAviso = setTimeout(() => { el.hidden = true; }, AVISO_MS);
   }
@@ -78,7 +94,7 @@
   function copiarPorSelecao(texto, onde) {
     const area = h('textarea', { readonly: true, style: 'position:fixed;opacity:0;top:0;left:0' });
     area.value = texto;
-    onde.append(area); // dentro do <dialog> aberto, senão a seleção não pega
+    onde.append(area);
     area.select();
     const deuCerto = document.execCommand('copy');
     area.remove();
@@ -97,12 +113,6 @@
     avisar(deuCerto ? mensagem : 'Não deu para copiar. Selecione o texto e copie à mão.');
   }
 
-  function botaoCopiarPrompt(item) {
-    const botao = h('button', { class: 'botao botao--cheio', type: 'button', texto: 'Copiar prompt' });
-    botao.addEventListener('click', () => copiar(item.prompt, `Prompt ${item.rotulo} copiado`, botao));
-    return botao;
-  }
-
   function imagem(item, alt) {
     const img = h('img', { src: item.capa, alt, loading: 'lazy', decoding: 'async', referrerpolicy: 'no-referrer' });
     img.addEventListener('load', () => img.classList.add('pronta'));
@@ -111,32 +121,49 @@
   }
 
   // ---------- cartão ----------
-  function montarCartao(item, abrir) {
-    const aoAbrir = (evento) => abrir(item, evento.currentTarget);
-    return h('article', { class: 'quadro' },
-      h('button', { class: 'quadro__tela', type: 'button', 'aria-label': `Abrir o quadro ${item.rotulo}, de @${item.autor}`, onclick: aoAbrir },
-        imagem(item, ''),
-        h('span', { class: item.video ? 'quadro__selo' : 'quadro__selo quadro__selo--fora', texto: item.video ? '▶ Assistir' : 'Só imagem' }),
-        h('span', { class: 'quadro__num', texto: item.rotulo })),
-      h('div', { class: 'quadro__corpo' },
-        h('div', { class: 'quadro__meta mono' },
-          h('a', { href: item.post, ...NOVA_ABA, texto: `@${item.autor}` }),
-          h('span', { texto: dataBr(item.data) })),
-        item.titulo && h('h2', { class: 'quadro__titulo', texto: item.titulo }),
-        h('p', { class: 'quadro__trecho', texto: item.prompt }),
-        h('div', { class: 'quadro__tags mono' },
-          ...etiquetasDe(item).map((texto) => h('span', { texto })),
-          item.parcial && h('span', { class: 'quadro__parcial', texto: 'Texto do post' })),
-        h('div', { class: 'quadro__acoes' },
-          botaoCopiarPrompt(item),
-          h('button', { class: 'botao', type: 'button', texto: 'Ver', onclick: aoAbrir }))));
+  function ligarPrevia(tela, item) {
+    let relogio = 0;
+    let video = null;
+    const parar = () => {
+      clearTimeout(relogio);
+      if (video) { video.remove(); video = null; }
+    };
+    tela.addEventListener('pointerenter', () => {
+      relogio = setTimeout(() => {
+        video = h('video', { src: item.video, muted: true, loop: true, playsinline: true, autoplay: true, preload: 'auto', 'aria-hidden': 'true', tabindex: '-1' });
+        video.muted = true;
+        video.addEventListener('playing', () => video?.classList.add('rodando'));
+        video.addEventListener('error', () => { console.warn('Prévia não carregou:', item.slug); parar(); });
+        tela.append(video);
+      }, ESPERA_PREVIA_MS);
+    });
+    tela.addEventListener('pointerleave', parar);
+    tela.addEventListener('click', parar);
   }
 
-  // ---------- tela de detalhe ----------
+  function montarCartao(item, abrir, posicao) {
+    const tela = h('button', { class: 'cena__tela', type: 'button', 'aria-label': `Abrir o vídeo de @${item.autor}`, onclick: (e) => abrir(item, e.currentTarget) },
+      imagem(item, ''),
+      item.video && h('span', { class: 'cena__play' }, iconePlay()));
+    if (item.video && temCursor && !poucoMovimento) ligarPrevia(tela, item);
+    const copiarBotao = h('button', { class: 'cena__copiar', type: 'button', texto: 'Copiar prompt' });
+    copiarBotao.addEventListener('click', () => copiar(item.prompt, 'Prompt copiado', copiarBotao));
+    const cartao = h('article', { class: 'cena' },
+      h('div', { style: 'position:relative' }, tela, copiarBotao),
+      h('div', { class: 'cena__legenda' },
+        h('a', { class: 'cena__autor', href: item.post, ...NOVA_ABA, texto: `@${item.autor}` }),
+        h('span', { class: 'cena__tipo', texto: CATEGORIAS[item.categoria] || item.categoria }),
+        h('p', { class: 'cena__trecho', texto: item.titulo || item.prompt.replace(/\s+/g, ' ').slice(0, 140) })));
+    cartao.style.setProperty('--i', String(Math.min(posicao, ATRASO_MAXIMO)));
+    return cartao;
+  }
+
+  // ---------- folha de detalhe ----------
   function criarDetalhe(total) {
     const dialogo = $('detalhe');
     const tela = $('d-tela');
     const lado = $('d-lado');
+    const pe = $('d-pe');
     let lista = [];
     let posicao = -1;
     let origem = null;
@@ -146,8 +173,9 @@
       const video = h('video', { src: item.video, poster: item.capa, controls: true, autoplay: true, playsinline: true, loop: true, preload: 'auto' });
       video.addEventListener('error', () => {
         console.error('Vídeo não carregou:', item.video);
-        tela.replaceChildren(imagem(item, ''), h('p', { class: 'detalhe__falha', texto: 'O vídeo não carregou. Veja no post original.' }));
-        tela.querySelector('img').classList.add('pronta');
+        const capa = imagem(item, '');
+        capa.classList.add('pronta');
+        tela.replaceChildren(capa, h('p', { class: 'folha__falha', texto: 'O vídeo não carregou. Veja no post original.' }));
       });
       return [video];
     }
@@ -155,29 +183,29 @@
     function preencher() {
       const item = lista[posicao];
       tela.replaceChildren(...midia(item));
-      const copiarLink = h('button', { class: 'botao', type: 'button', texto: 'Copiar link' });
-      copiarLink.addEventListener('click', () => copiar(location.href, 'Link do quadro copiado', copiarLink));
+      const copiarLink = h('button', { type: 'button', texto: 'Copiar link' });
+      copiarLink.addEventListener('click', () => copiar(location.href, 'Link copiado', copiarLink));
       lado.replaceChildren(...[
-        h('h2', { class: 'detalhe__autor' }, h('a', { href: item.post, ...NOVA_ABA, texto: `@${item.autor}` })),
-        item.titulo && h('p', { class: 'detalhe__titulo', texto: item.titulo }),
-        h('div', { class: 'quadro__tags mono' }, h('span', { texto: dataBr(item.data) }), ...etiquetasDe(item).map((texto) => h('span', { texto }))),
-        h('div', { class: 'detalhe__acoes' },
-          botaoCopiarPrompt(item),
+        h('h2', { class: 'folha__autor', id: 'd-autor' }, h('a', { href: item.post, ...NOVA_ABA, texto: `@${item.autor}` })),
+        item.titulo && h('p', { class: 'folha__titulo', texto: item.titulo }),
+        h('div', { class: 'folha__tags' }, ...etiquetasDe(item).map((texto) => h('span', { texto })), h('span', { texto: dataBr(item.data) })),
+        item.parcial && h('p', { class: 'folha__nota', texto: 'O autor não publicou o prompt. Este é o texto do post.' }),
+        !item.video && h('p', { class: 'folha__nota', texto: 'Este vídeo só está disponível no post original.' }),
+        h('pre', { class: 'folha__prompt', tabindex: '0', texto: item.prompt }),
+        h('div', { class: 'folha__links' },
           copiarLink,
-          h('a', { class: 'botao', href: item.post, ...NOVA_ABA, texto: item.video ? 'Post original ↗' : 'Ver o vídeo no post ↗' }),
-          item.skillry && h('a', { class: 'botao', href: item.skillry, ...NOVA_ABA, texto: 'Versão refeita ↗' })),
-        item.parcial && h('p', { class: 'detalhe__nota mono', texto: 'O autor não publicou o prompt. O texto abaixo é o do post.' }),
-        h('div', { class: 'detalhe__rotulo mono' },
-          h('span', { texto: item.parcial ? 'Texto do post' : 'Prompt' }),
-          h('span', { texto: `${item.prompt.length.toLocaleString('pt-BR')} caracteres` })),
-        h('pre', { class: 'detalhe__prompt', tabindex: '0', texto: item.prompt }),
+          h('a', { href: item.post, ...NOVA_ABA, texto: item.video ? 'Post original' : 'Ver o vídeo no post' }),
+          item.skillry && h('a', { href: item.skillry, ...NOVA_ABA, texto: 'Versão refeita' })),
       ].filter(Boolean));
       lado.scrollTop = 0;
-      $('d-num').textContent = `Quadro ${item.rotulo} / ${numero(total)}`;
+      const copiarPrompt = h('button', { class: 'botao', type: 'button', texto: item.parcial ? 'Copiar texto' : 'Copiar prompt' });
+      copiarPrompt.addEventListener('click', () => copiar(item.prompt, 'Prompt copiado', copiarPrompt));
+      pe.replaceChildren(copiarPrompt, h('span', { texto: plural(item.prompt.length, 'caractere', 'caracteres') }));
+      $('d-num').textContent = `${item.numero} de ${total}`;
       $('d-ant').disabled = posicao <= 0;
       $('d-prox').disabled = posicao >= lista.length - 1;
       history.replaceState(null, '', `#${item.slug}`);
-      document.title = `@${item.autor} · quadro ${item.rotulo} — Rolo`;
+      document.title = `@${item.autor} — Rolo`;
     }
 
     function andar(passo) {
@@ -199,6 +227,7 @@
     $('d-ant').addEventListener('click', () => andar(-1));
     $('d-prox').addEventListener('click', () => andar(1));
     $('d-fechar').addEventListener('click', () => dialogo.close());
+    dialogo.addEventListener('click', (evento) => { if (evento.target === dialogo) dialogo.close(); }); // clique no fundo
     dialogo.addEventListener('keydown', (evento) => {
       if (evento.target.tagName === 'VIDEO') return; // as setas avançam o vídeo
       if (evento.key === 'ArrowLeft') andar(-1);
@@ -207,7 +236,7 @@
     dialogo.addEventListener('close', () => {
       tela.replaceChildren(); // para o vídeo
       history.replaceState(null, '', location.pathname + location.search);
-      document.title = 'Rolo — prompts de vídeo do Opus 5.5';
+      document.title = TITULO;
       if (origem?.isConnected) origem.focus({ preventScroll: true });
     });
     return abrir;
@@ -224,39 +253,22 @@
     let mostrados = 0;
 
     const abrir = (item, quemAbriu) => abrirDetalhe(item, visiveis, quemAbriu);
-    const contar = (teste) => itens.filter(teste).length;
-    const chave = (rotulo, total, aoClicar) => h('button', { class: 'chave mono', type: 'button', 'aria-pressed': 'false', onclick: aoClicar },
-      h('span', { texto: rotulo }), h('i', { texto: String(total) }));
+    const chip = (rotulo, aoClicar, leve) => h('button', { class: leve ? 'chip chip--leve' : 'chip', type: 'button', 'aria-pressed': 'false', texto: rotulo, onclick: aoClicar });
+    const divisa = () => h('span', { class: 'filtros__divisa', 'aria-hidden': 'true' });
+    const alternarTecnica = (id) => (estado.tecnicas.includes(id) ? estado.tecnicas.filter((t) => t !== id) : [...estado.tecnicas, id]);
 
-    const botoesCategoria = new Map([['', chave('Todos', itens.length, () => mudar({ categoria: '' }))],
-      ...Object.entries(CATEGORIAS).map(([id, rotulo]) => [id, chave(rotulo, contar((i) => i.categoria === id), () => mudar({ categoria: id }))])]);
-    const botoesTecnica = new Map(Object.entries(TECNICAS)
-      .map(([id, rotulo]) => [id, rotulo, contar((i) => i.tags.includes(id))])
-      .filter(([, , total]) => total > 0)
-      .map(([id, rotulo, total]) => [id, chave(rotulo, total, () => mudar({
-        tecnicas: estado.tecnicas.includes(id) ? estado.tecnicas.filter((t) => t !== id) : [...estado.tecnicas, id],
-      }))]));
-    $('categorias').append(...botoesCategoria.values());
-    $('tecnicas').append(...botoesTecnica.values());
-
-    const ultimaData = itens.reduce((maior, item) => (item.data > maior ? item.data : maior), '');
-    $('numeros').append(...[
-      [contar((i) => i.video), 'com vídeo'],
-      [contar((i) => !i.parcial), 'prompts completos'],
-      [dataBr(ultimaData).slice(0, 5), 'última leva'],
-    ].map(([valor, rotulo]) => h('div', {}, h('dt', { texto: rotulo }), h('dd', { texto: String(valor) }))));
-
-    const destaques = itens.filter((item) => item.video).slice(0, QUADROS_NO_ROLO);
-    const grupoDoRolo = (repetido) => h('div', { class: 'rolo__grupo', 'aria-hidden': repetido ? 'true' : null },
-      ...destaques.map((item) => h('button', {
-        class: 'rolo__quadro', type: 'button', tabindex: repetido ? '-1' : null,
-        'aria-label': `Abrir o quadro ${item.rotulo}, de @${item.autor}`, onclick: (evento) => abrir(item, evento.currentTarget),
-      }, imagem(item, ''), h('span', { texto: item.rotulo }))));
-    $('rolo-trilho').append(grupoDoRolo(false), grupoDoRolo(true));
+    const chipsCategoria = new Map([['', chip('Tudo', () => mudar({ categoria: '' }))],
+      ...Object.entries(CATEGORIAS).map(([id, rotulo]) => [id, chip(rotulo, () => mudar({ categoria: id }))])]);
+    const chipVideo = chip('Com vídeo', () => mudar({ soVideo: !estado.soVideo }));
+    const chipCompleto = chip('Prompt completo', () => mudar({ soCompleto: !estado.soCompleto }));
+    const chipsTecnica = new Map(Object.entries(TECNICAS)
+      .filter(([id]) => itens.some((item) => item.tags.includes(id)))
+      .map(([id, rotulo]) => [id, chip(rotulo, () => mudar({ tecnicas: alternarTecnica(id) }), true)]));
+    $('chips').append(...chipsCategoria.values(), divisa(), chipVideo, chipCompleto, divisa(), ...chipsTecnica.values());
 
     function carregarMais() {
       const proximos = visiveis.slice(mostrados, mostrados + LOTE);
-      grade.append(...proximos.map((item) => montarCartao(item, abrir)));
+      grade.append(...proximos.map((item, i) => montarCartao(item, abrir, i)));
       mostrados += proximos.length;
     }
 
@@ -266,11 +278,11 @@
       grade.replaceChildren();
       carregarMais();
       $('vazio').hidden = visiveis.length > 0;
-      $('contagem').textContent = `${visiveis.length} de ${itens.length}`;
-      botoesCategoria.forEach((botao, id) => botao.setAttribute('aria-pressed', String(id === estado.categoria)));
-      botoesTecnica.forEach((botao, id) => botao.setAttribute('aria-pressed', String(estado.tecnicas.includes(id))));
-      $('so-video').setAttribute('aria-pressed', String(estado.soVideo));
-      $('so-completo').setAttribute('aria-pressed', String(estado.soCompleto));
+      $('contagem').textContent = plural(visiveis.length, 'vídeo', 'vídeos');
+      chipsCategoria.forEach((botao, id) => botao.setAttribute('aria-pressed', String(id === estado.categoria)));
+      chipsTecnica.forEach((botao, id) => botao.setAttribute('aria-pressed', String(estado.tecnicas.includes(id))));
+      chipVideo.setAttribute('aria-pressed', String(estado.soVideo));
+      chipCompleto.setAttribute('aria-pressed', String(estado.soCompleto));
       $('ordem').value = estado.ordem;
       if ($('busca').value !== estado.busca) $('busca').value = estado.busca;
     }
@@ -293,12 +305,8 @@
       const valor = evento.target.value;
       relogioBusca = setTimeout(() => mudar({ busca: valor }), ESPERA_BUSCA_MS);
     });
-    $('so-video').addEventListener('click', () => mudar({ soVideo: !estado.soVideo }));
-    $('so-completo').addEventListener('click', () => mudar({ soCompleto: !estado.soCompleto }));
     $('ordem').addEventListener('change', (evento) => mudar({ ordem: evento.target.value in ORDENS ? evento.target.value : INICIAL.ordem }));
     $('limpar').addEventListener('click', () => mudar(INICIAL));
-    $('limpar-vazio').addEventListener('click', () => mudar(INICIAL));
-    $('subir').addEventListener('click', (evento) => { evento.preventDefault(); window.scrollTo({ top: 0, behavior: 'smooth' }); });
     document.addEventListener('keydown', (evento) => {
       const digitando = /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName || '');
       if (evento.key === '/' && !digitando && !$('detalhe').open) { evento.preventDefault(); $('busca').focus(); }
@@ -309,8 +317,7 @@
       if (entradas.some((e) => e.isIntersecting) && mostrados < visiveis.length) carregarMais();
     }, { rootMargin: '1200px 0px' }).observe($('sentinela'));
 
-    $('total').textContent = String(itens.length);
-    $('total-hud').textContent = String(itens.length);
+    $('total').textContent = itens.length.toLocaleString('pt-BR');
     desenhar();
     abrirPeloEndereco();
   }
@@ -320,7 +327,7 @@
   } catch (erro) {
     console.error(erro);
     const vazio = $('vazio');
-    vazio.replaceChildren(h('p', { texto: 'Não consegui carregar os prompts. Recarregue a página.' }));
+    vazio.replaceChildren(h('p', { texto: 'Não consegui carregar os vídeos. Recarregue a página.' }));
     vazio.hidden = false;
   }
 })();

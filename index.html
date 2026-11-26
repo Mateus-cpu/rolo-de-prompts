@@ -4,103 +4,94 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="referrer" content="no-referrer">
-<meta name="theme-color" content="#121110">
-<title>Rolo — prompts de vídeo do Opus 5.5</title>
-<meta name="description" content="703 prompts de vídeos feitos com Claude Opus 5.5, cada um ao lado do vídeo que gerou. Busque, assista e copie.">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#FBFBF9" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0E0E0C" media="(prefers-color-scheme: dark)">
+<title>Rolo — prompts que viraram vídeo</title>
+<meta name="description" content="703 vídeos feitos com Claude Opus 5.5, cada um com o prompt que o gerou. Passe o cursor para ver, abra para copiar.">
 <meta property="og:type" content="website">
-<meta property="og:title" content="Rolo — 703 prompts de vídeo do Opus 5.5">
-<meta property="og:description" content="Cada prompt ao lado do vídeo que gerou. Busque, assista e copie.">
+<meta property="og:title" content="Rolo — prompts que viraram vídeo">
+<meta property="og:description" content="703 vídeos feitos com Claude Opus 5.5, cada um com o prompt que o gerou.">
 <meta property="og:locale" content="pt_BR">
 <meta name="twitter:card" content="summary">
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%23121110'/%3E%3Cpath d='M11 8l14 8-14 8z' fill='%23FFB000'/%3E%3C/svg%3E">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='16' fill='%230E0E0C'/%3E%3Cpath d='M13 10l9 6-9 6z' fill='%23FBFBF9'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://api.fontshare.com">
+<link rel="preconnect" href="https://cdn.fontshare.com" crossorigin>
 <link rel="preconnect" href="https://media.skillry.dev">
-<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;700;900&family=Martian+Mono:wght@400;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="estilo.css?v=2">
+<link rel="stylesheet" href="https://api.fontshare.com/v2/css?f[]=zodiak@400,401&display=swap">
+<link rel="stylesheet" href="https://api.fontshare.com/v2/css?f[]=switzer@400,500,600&display=swap">
+<link rel="stylesheet" href="estilo.css?v=3">
 </head>
 <body>
-<a class="pular mono" href="#grade">Pular para os prompts</a>
+<a class="pular" href="#grade">Pular para os vídeos</a>
 
-<header class="topo" id="topo-da-pagina">
-  <div class="topo__linha mono">
-    <span class="marca"><i aria-hidden="true"></i><b>Rolo</b> / prompts de vídeo</span>
-    <span class="some">Opus 5.5 · arquivo [ 001 — <span id="total-hud">703</span> ]</span>
-    <a href="https://github.com/yihui-dev/awesome-opus5-5-videos" target="_blank" rel="noopener noreferrer">Fonte dos dados ↗</a>
-  </div>
-  <h1 class="topo__titulo"><span id="total">703</span> prompts,<br>cada um com o seu vídeo.</h1>
-  <div class="topo__base">
-    <p class="topo__texto">Vídeos que as pessoas fizeram pedindo ao Claude Opus 5.5 para escrever a animação em código. Abra um quadro, assista e copie o prompt para usar no seu agente.</p>
-    <dl class="numeros mono" id="numeros"></dl>
-  </div>
+<header class="barra" id="topo">
+  <a class="marca" href="./" aria-label="Rolo, início">Rolo</a>
+  <label class="busca">
+    <svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="9" cy="9" r="6"/><path d="m14 14 4 4"/></svg>
+    <span class="oculto">Buscar</span>
+    <input id="busca" type="search" placeholder="Buscar por palavra, autor ou técnica" autocomplete="off" spellcheck="false">
+  </label>
+  <a class="barra__link" href="#sobre">Sobre</a>
 </header>
 
-<div class="rolo" id="rolo" aria-label="Quadros em destaque"><div class="rolo__trilho" id="rolo-trilho"></div></div>
-
-<section class="filtros" aria-label="Filtros">
-  <label class="busca">
-    <span class="mono">Buscar</span>
-    <input id="busca" type="search" placeholder="palavra do prompt, @autor, técnica…" autocomplete="off" spellcheck="false">
-    <span class="busca__conta mono" id="contagem" aria-live="polite"></span>
-    <kbd class="mono some">/</kbd>
-  </label>
-  <div class="grupo" role="group" aria-label="Categoria" id="categorias"></div>
+<section class="abre">
+  <h1>Prompts que <em>viraram</em> vídeo.</h1>
+  <p><span id="total">703</span> vídeos feitos com Claude Opus 5.5, cada um com o prompt que o gerou. <span class="so-cursor">Passe o cursor para ver, abra para copiar.</span><span class="so-toque">Toque para assistir e copiar.</span></p>
 </section>
 
-<section class="filtros filtros--extra" aria-label="Mais filtros">
-  <div class="grupo grupo--fino" role="group" aria-label="Técnica" id="tecnicas"></div>
-  <div class="grupo grupo--fino" role="group" aria-label="Opções">
-    <button class="chave mono" type="button" id="so-video" aria-pressed="false">Só com vídeo</button>
-    <button class="chave mono" type="button" id="so-completo" aria-pressed="false">Só prompt completo</button>
-    <label class="ordem mono">Ordem
+<nav class="filtros" aria-label="Filtros">
+  <div class="filtros__linha" id="chips"></div>
+  <div class="filtros__lado">
+    <span id="contagem" aria-live="polite"></span>
+    <label class="ordem"><span class="oculto">Ordem</span>
       <select id="ordem">
-        <option value="recentes">mais recentes</option>
-        <option value="original">ordem do arquivo</option>
-        <option value="longos">prompt mais longo</option>
-        <option value="curtos">prompt mais curto</option>
-        <option value="autor">autor A–Z</option>
+        <option value="recentes">Mais recentes</option>
+        <option value="original">Ordem do arquivo</option>
+        <option value="longos">Prompt mais longo</option>
+        <option value="curtos">Prompt mais curto</option>
+        <option value="autor">Autor A–Z</option>
       </select>
     </label>
-    <button class="chave mono" type="button" id="limpar">Limpar filtros</button>
   </div>
-</section>
+</nav>
 
-<main id="grade" class="grade" aria-label="Prompts" tabindex="-1"></main>
+<main id="grade" class="grade" aria-label="Vídeos" tabindex="-1"></main>
 <div id="vazio" class="vazio" hidden>
-  <p>Nenhum prompt bate com esses filtros.</p>
-  <button class="botao" type="button" id="limpar-vazio">Limpar filtros</button>
+  <p>Nada encontrado com esses filtros.</p>
+  <button class="botao" type="button" id="limpar">Limpar filtros</button>
 </div>
 <div id="sentinela" aria-hidden="true"></div>
-<noscript><p class="vazio">Esta página precisa de JavaScript para listar os prompts.</p></noscript>
+<noscript><p class="vazio">Esta página precisa de JavaScript para listar os vídeos.</p></noscript>
 
-<footer class="rodape">
-  <p class="rodape__marca">Rolo</p>
-  <div class="rodape__colunas mono">
-    <p>Dados do repositório <a href="https://github.com/yihui-dev/awesome-opus5-5-videos" target="_blank" rel="noopener noreferrer">yihui-dev/awesome-opus5-5-videos</a>, sob licença MIT (<a href="LICENCA-ORIGEM.txt">texto da licença</a>).</p>
-    <p>Cada prompt e cada vídeo pertence ao autor creditado no quadro. Imagens e vídeos são carregados de media.skillry.dev.</p>
+<footer class="rodape" id="sobre">
+  <p class="rodape__frase">Um arquivo para estudar como um bom prompt vira imagem em movimento.</p>
+  <div class="rodape__colunas">
+    <p>Os dados vêm do repositório <a href="https://github.com/yihui-dev/awesome-opus5-5-videos" target="_blank" rel="noopener noreferrer">awesome-opus5-5-videos</a>, sob licença MIT (<a href="LICENCA-ORIGEM.txt">ler a licença</a>).</p>
+    <p>Cada prompt e cada vídeo pertence ao autor creditado. Imagens e vídeos são carregados de media.skillry.dev.</p>
     <p>Projeto independente, sem vínculo com a Anthropic nem com o Skillry. Os prompts estão no idioma original.</p>
   </div>
-  <a class="botao" href="#topo-da-pagina" id="subir">Voltar ao topo ↑</a>
 </footer>
 
-<dialog class="detalhe" id="detalhe" aria-labelledby="d-num">
-  <div class="detalhe__barra mono">
-    <span id="d-num"></span>
-    <div class="detalhe__nav">
-      <button class="botao" type="button" id="d-ant" aria-label="Quadro anterior">←</button>
-      <button class="botao" type="button" id="d-prox" aria-label="Próximo quadro">→</button>
-      <button class="botao" type="button" id="d-fechar">Fechar ✕</button>
+<dialog class="folha" id="detalhe" aria-labelledby="d-autor">
+  <div class="folha__midia" id="d-tela"></div>
+  <div class="folha__painel">
+    <div class="folha__topo">
+      <span id="d-num"></span>
+      <div class="folha__nav">
+        <button class="redondo" type="button" id="d-ant" aria-label="Vídeo anterior"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M12 4 6 10l6 6"/></svg></button>
+        <button class="redondo" type="button" id="d-prox" aria-label="Próximo vídeo"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="m8 4 6 6-6 6"/></svg></button>
+        <button class="redondo" type="button" id="d-fechar" aria-label="Fechar"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="m5 5 10 10M15 5 5 15"/></svg></button>
+      </div>
     </div>
-  </div>
-  <div class="detalhe__corpo">
-    <div class="detalhe__tela" id="d-tela"></div>
-    <div class="detalhe__lado" id="d-lado"></div>
+    <div class="folha__rolagem" id="d-lado"></div>
+    <div class="folha__pe" id="d-pe"></div>
   </div>
 </dialog>
 
-<div id="aviso" class="aviso mono" role="status" aria-live="polite" hidden></div>
+<div id="aviso" class="aviso" role="status" aria-live="polite" hidden></div>
 
 <script defer src="dados.js"></script>
-<script defer src="app.js?v=2"></script>
+<script defer src="app.js?v=3"></script>
 </body>
 </html>

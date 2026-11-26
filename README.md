@@ -1,6 +1,6 @@
 # Rolo
 
-703 prompts de vídeos feitos com Claude Opus 5.5, cada um ao lado do vídeo que gerou.
+703 vídeos feitos com Claude Opus 5.5, cada um com o prompt que o gerou.
 
 Site: https://mateus-cpu.github.io/rolo-de-prompts/
 
